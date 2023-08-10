@@ -1,0 +1,13 @@
+[package]
+name = "lunager"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4.26"
+reqwest = { version = "0.11.18", features = ["blocking"] }
+rusqlite = "0.29.0"
+serde = { version = "1.0.171", features = ["derive"] }
+serde_json = "1.0.103"
