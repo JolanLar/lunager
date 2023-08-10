@@ -1,88 +1,39 @@
 use rusqlite::{Connection, params};
 
+use super::serie::Serie;
+
 #[derive(Debug)]
 pub struct Movie {
-    tmdb_id: i32,
-    name: String,
-    path_hd: String,
-    path_4k: String,
-    rating_key: String,
-    last_view: i32,
-    protected: bool
+    pub tmdb_id: i32,
+    pub name: String,
+    pub path_hd: String,
+    pub path_4k: String,
+    pub rating_key: String,
+    pub last_view: i32,
+    pub protected: bool
 }
 
 impl Movie {
-    pub fn new(
-        conn: &Connection,
-        tmdb_id: i32,
-        name: Option<String>,
-        path_hd: Option<String>,
-        path_4k: Option<String>,
-        rating_key: Option<String>,
-        last_view: Option<i32>,
-        protected: Option<bool>,
-    ) -> Self {
-        let movie = Movie {
-            tmdb_id: tmdb_id,
-            name: name.unwrap_or(String::new()),
-            path_hd: path_hd.unwrap_or(String::new()),
-            path_4k: path_4k.unwrap_or(String::new()),
-            rating_key: rating_key.unwrap_or(String::new()),
-            last_view: last_view.unwrap_or(i32::MIN),
-            protected: protected.unwrap_or(false),
-        };
-        movie.save(&conn);
-        movie
-    }
-
-    pub fn save(&self, conn: &Connection) {
+    pub fn save(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         conn.execute("
-            REPLACE INTO movie (tmdb_id, name, radarr_id, path, rating_key, last_view, protected)
+            REPLACE INTO movie (tmdb_id, name, path_hd, path_4k, rating_key, last_view, protected)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ", params![
             &self.tmdb_id,
             &self.name,
-            &self.radarr_id,
-            &self.path,
+            &self.path_hd,
+            &self.path_4k,
             &self.rating_key,
             &self.last_view,
             &self.protected,
-        ]).unwrap();
-        if self.tmdb_id == 736526 as i32 {
-            println!("Movie saved: {:?}", self);
-        }
-    }
-
-    pub fn get_by_tmdb_id(conn: &Connection, tmdb_id: i32) -> Result<Movie, Box<dyn std::error::Error>> {
-        let mut stmt = conn.prepare("
-            SELECT tmdb_id, name, radarr_id, path, rating_key, last_view, protected
-            FROM movie
-            WHERE tmdb_id = ?
-        ")?;
-
-        let mut movie_iter = stmt.query_map([tmdb_id], |row| {
-            Ok(Movie {
-                tmdb_id: row.get(0)?,
-                name: row.get(1)?,
-                radarr_id: row.get(2)?,
-                path: row.get(3)?,
-                rating_key: row.get(4)?,
-                last_view: row.get(5)?,
-                protected: row.get(6)?
-            })
-        })?;
-
-        if let Some(result) = movie_iter.next() {
-            result.map_err(|err| err.into())
-        } else {
-            Err("Movie not found".into())
-        }
+        ])?;
+        Ok(())
     }
 
     // create static function that returns all database movies
     pub fn get_all(conn: &Connection) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
         let mut stmt = conn.prepare("
-            SELECT tmdb_id, name, radarr_id, path, rating_key, last_view, protected
+            SELECT tmdb_id, name, path_hd, path_4k, rating_key, last_view, protected
             FROM movie
         ")?;
 
@@ -90,8 +41,8 @@ impl Movie {
             Ok(Movie {
                 tmdb_id: row.get(0)?,
                 name: row.get(1)?,
-                radarr_id: row.get(2)?,
-                path: row.get(3)?,
+                path_hd: row.get(2)?,
+                path_4k: row.get(3)?,
                 rating_key: row.get(4)?,
                 last_view: row.get(5)?,
                 protected: row.get(6)?
@@ -107,42 +58,38 @@ impl Movie {
     }
 
     // create from_radarr_json function
-    pub fn from_radarr_json(conn: &Connection, radarr_id: i32, json: &serde_json::Value) -> Self {
-        let movie = match Movie::get_by_tmdb_id(&conn, json["tmdbId"].as_i64().unwrap() as i32) {
-            Ok(mut movie) => {
-                movie.name = json["title"].as_str().unwrap().to_string();
-                movie.path = json["rootFolderPath"].as_str().unwrap().to_string();
-                movie.radarr_id = radarr_id;
-                movie
-            },
-            Err(_) => Movie {
-                    tmdb_id: json["tmdbId"].as_i64().unwrap() as i32,
-                    name: json["title"].as_str().unwrap().to_string(),
-                    radarr_id: radarr_id,
-                    path: json["rootFolderPath"].as_str().unwrap().to_string(),
-                    rating_key: String::new(),
-                    last_view: 0,
-                    protected: false
-                }
-            };
-        movie.save(&conn);
+    pub fn from_radarr_json(json: &serde_json::Value, is4k: bool) -> Self {
+        let mut movie = Movie {
+            tmdb_id: json["tmdbId"].as_i64().unwrap() as i32,
+            name: json["title"].as_str().unwrap().to_string(),
+            path_hd: String::new(),
+            path_4k: String::new(),
+            rating_key: String::new(),
+            last_view: 0,
+            protected: false
+        };
+        if is4k {
+            movie.path_4k = json["rootFolderPath"].as_str().unwrap().to_string();
+        } else {
+            movie.path_hd = json["rootFolderPath"].as_str().unwrap().to_string();
+        }
         movie
     }
 
     // function to get a movie by his title
     pub fn get_by_title(conn: &Connection, title: &str) -> Result<Movie, Box<dyn std::error::Error>> {
         let mut stmt = conn.prepare("
-            SELECT tmdb_id, name, radarr_id, path, rating_key, last_view, protected
+            SELECT tmdb_id, name, path_hd, path_4k, rating_key, last_view, protected
             FROM movie
-            WHERE lower(name) = lower(?)
+            WHERE trim(lower(name)) = trim(lower(?))
         ")?;
 
         let mut movie_iter = stmt.query_map([title], |row| {
             Ok(Movie {
                 tmdb_id: row.get(0)?,
                 name: row.get(1)?,
-                radarr_id: row.get(2)?,
-                path: row.get(3)?,
+                path_hd: row.get(2)?,
+                path_4k: row.get(3)?,
                 rating_key: row.get(4)?,
                 last_view: row.get(5)?,
                 protected: row.get(6)?
@@ -156,11 +103,37 @@ impl Movie {
         }
     }
 
-    pub fn get_last_view(&self) -> i32 {
-        self.last_view
-    }
+    pub fn get_movies_to_delete(conn: &Connection, last_view: i32) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
+        let mut stmt = conn.prepare("
+            SELECT tmdb_id, name, path_hd, path_4k, rating_key, last_view, protected
+            FROM movie
+            WHERE last_view < ?
+        ")?;
 
-    pub fn set_last_view(&mut self, last_view: i32) {
-        self.last_view = last_view;
+        let mut movie_iter = stmt.query_map([last_view], |row| {
+            Ok(Movie {
+                tmdb_id: row.get(0)?,
+                name: row.get(1)?,
+                path_hd: row.get(2)?,
+                path_4k: row.get(3)?,
+                rating_key: row.get(4)?,
+                last_view: row.get(5)?,
+                protected: row.get(6)?
+            })
+        })?;
+
+        let mut movies = Vec::new();
+        while let Some(result) = movie_iter.next() {
+            movies.push(result?);
+        }
+
+        Ok(movies)
+    }
+}
+
+// add partial_eq trait to Movie struct
+impl PartialEq for Movie {
+    fn eq(&self, other: &Self) -> bool {
+        self.tmdb_id == other.tmdb_id
     }
 }

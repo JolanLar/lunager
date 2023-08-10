@@ -72,13 +72,13 @@ pub fn initialize_database() -> Result<()> {
         CREATE TABLE IF NOT EXISTS movie (
             tmdb_id INTEGER PRIMARY KEY,
             name TEXT,
-            radarr_id INTERGER,
-            path TEXT,
+            path_hd TEXT,
+            path_4k TEXT,
             rating_key TEXT,
             last_view INTERGER,
             protected INTEGER,
-            FOREIGN KEY(radarr_id) REFERENCES radarr(id),
-            FOREIGN KEY(path) REFERENCES radarr_disk(path)
+            FOREIGN KEY(path_hd) REFERENCES radarr_path(path),
+            FOREIGN KEY(path_4k) REFERENCES radarr_path(path)
         )", 
         []
     )?;
@@ -87,15 +87,15 @@ pub fn initialize_database() -> Result<()> {
     // Create serie table
     conn.execute("
         CREATE TABLE IF NOT EXISTS serie (
-            tmdb_id INTEGER PRIMARY KEY,
+            tvdb_id INTEGER PRIMARY KEY,
             name TEXT,
-            sonarr_id INTERGER,
-            path TEXT,
+            path_hd INTERGER,
+            path_4k TEXT,
             rating_key TEXT,
             last_view INTERGER,
             protected INTEGER,
-            FOREIGN KEY(sonarr_id) REFERENCES sonarr(id),
-            FOREIGN KEY(path) REFERENCES sonarr_disk(path)
+            FOREIGN KEY(path_hd) REFERENCES sonarr_path(path),
+            FOREIGN KEY(path_4k) REFERENCES sonarr_path(path)
         )", 
         []
     )?;

@@ -7,3 +7,4 @@ pub mod tautulli;
 mod disk;
 mod path;
 pub mod movie;
+pub mod serie;

@@ -1,9 +1,12 @@
 mod database;
 use database::initialize_database;
 use rusqlite::Connection;
-use services::jellyfin::{Jellyfin, self};
+use services::jellyfin::Jellyfin;
 use services::overseerr::Overseerr;
-use services::radarr::Radarr;
+
+use crate::services::movie::Movie;
+use crate::services::serie::Serie;
+
 mod services;
 
 fn main() {
@@ -15,19 +18,108 @@ fn main() {
 
     let conn = Connection::open("data.db").unwrap();
 
+    println!("====================Overseerr====================");
     let overseerr = Overseerr::get_first(&conn);
-    
-    overseerr.get_all_movies(&conn).unwrap();
-
-    let radarrs = overseerr.get_radarrs().unwrap();
-
-    println!("{:?}", radarrs);
+    match overseerr.update_db_movies(&conn) {
+        Ok(_) => println!("Movies updated from overseerr"),
+        Err(err) => println!("{:?}", err)
+    };
+    match overseerr.update_db_series(&conn) {
+        Ok(_) => println!("Series updated from overseerr"),
+        Err(err) => println!("{:?}", err)
+    };
+    println!("====================Overseerr====================");
+    println!("");
+    println!("====================Radarr====================");
+    let radarrs = match overseerr.get_radarrs() {
+        Ok(radarrs) => {
+            println!("Successfully got radarrs from overseerr");
+            radarrs
+        },
+        Err(err) => {
+            println!("{:?}", err);
+            Vec::new()
+        }
+    };
 
     for radarr in radarrs {
-        radarr.get_all_movies(&conn).unwrap();
+        match radarr.populate_paths(&conn) {
+            Ok(_) => println!("Successfully populated paths for radarr"),
+            Err(err) => println!("{:?}", err)
+        }
+        match radarr.update_db_movies(&conn) {
+            Ok(_) => println!("Movies updated from radarr"),
+            Err(err) => println!("{:?}", err)
+        };
     }
+    println!("====================Radarr====================");
+    println!("");
+    println!("====================Sonarr====================");
+    let sonarrs = match overseerr.get_sonarrs() {
+        Ok(sonarrs) => {
+            println!("Successfully got sonarrs from overseerr");
+            sonarrs
+        },
+        Err(err) => {
+            println!("{:?}", err);
+            Vec::new()
+        }
+    };
 
-    for jellyfin in Jellyfin::get_all(&conn) {
-        jellyfin.get_movies_activity(&conn, 2).unwrap();
+    for sonarr in sonarrs {
+        match sonarr.populate_paths(&conn) {
+            Ok(_) => println!("Successfully populated paths for sonarr"),
+            Err(err) => println!("{:?}", err)
+        }
+        match sonarr.update_db_series(&conn) {
+            Ok(_) => println!("Series updated from sonarr"),
+            Err(err) => println!("{:?}", err)
+        };
     }
+    println!("====================Sonarr====================");
+    println!("");
+    println!("====================Jellyfin====================");
+    for jellyfin in Jellyfin::get_all(&conn) {
+        match jellyfin.update_movies_activity(&conn) {
+            Ok(_) => println!("Movies activity updated from jellyfin"),
+            Err(err) => println!("{:?}", err)
+        };
+        match jellyfin.update_series_activity(&conn) {
+            Ok(_) => println!("Series activity updated from jellyfin"),
+            Err(err) => println!("{:?}", err)
+        };
+    }
+    println!("====================Jellyfin====================");
+    println!("");
+    println!("====================Movies to delete====================");
+    // Get three months ago date as a timestamp
+    let three_months_ago = (chrono::Utc::now().timestamp() - 60 * 60 * 24 * 30 * 3) as i32;
+    let movies_to_delete = match Movie::get_movies_to_delete(&conn, three_months_ago) {
+        Ok(movies_to_delete) => {
+            println!("Successfully got movies to delete");
+            movies_to_delete
+        },
+        Err(err) => {
+            println!("{:?}", err);
+            Vec::new()
+        }
+    };
+    println!("Quantity founded : {:?}", movies_to_delete.len());
+    println!("====================Movies to delete====================");
+    println!("");
+    println!("====================Series to delete====================");
+    // Get three months ago date as a timestamp
+    let three_months_ago = (chrono::Utc::now().timestamp() - 60 * 60 * 24 * 30 * 3) as i32;
+    let series_to_delete = match Serie::get_series_to_delete(&conn, three_months_ago) {
+        Ok(series_to_delete) => {
+            println!("Successfully got series to delete");
+            series_to_delete
+        },
+        Err(err) => {
+            println!("{:?}", err);
+            Vec::new()
+        }
+    };
+    println!("Quantity founded : {:?}", series_to_delete.len());
+    println!("====================Series to delete====================");
 }

@@ -4,11 +4,12 @@ use rusqlite::{Connection, Result, params};
 pub struct SonarrPath {
     sonarr_id: i32,
     path: String,
-    disk_id : Option<i32>
+    disk_id : i32
 }
 
 impl SonarrPath {
-    pub fn new(sonarr_id: i32, path: &str, disk_id: Option<i32>) -> Self {
+    pub fn new(conn: &Connection, sonarr_id: i32, path: &str, disk_id: i32) -> Self {
+        conn.execute("REPLACE INTO sonarr_path (sonarr_id, path, disk_id) VALUES (?, ?, ?)", params![sonarr_id, path, disk_id]).unwrap();
         Self {
             sonarr_id: sonarr_id,
             path: path.to_string(),
@@ -42,6 +43,6 @@ trait GetDisk {
 
 impl GetDisk for SonarrPath {
     fn get_disk(&self) -> Result<Disk, Box<dyn std::error::Error>> {
-        Disk::get_by_id(self.disk_id.unwrap())
+        Disk::get_by_id(self.disk_id)
     }
 }

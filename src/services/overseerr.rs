@@ -1,7 +1,7 @@
 use reqwest::blocking::Client;
 use rusqlite::Connection;
 
-use super::{movie::Movie, radarr::Radarr};
+use super::{movie::Movie, radarr::Radarr, serie::Serie, sonarr::Sonarr};
 
 #[derive(Debug)]
 pub struct Overseerr {
@@ -23,7 +23,7 @@ impl Overseerr {
         }
     }
 
-    // create function to get first overseerr from database
+    // get first overseerr from database
     pub fn get_first(conn: &Connection) -> Self {
         let mut stmt = conn.prepare("
             SELECT id, url, api_key
@@ -44,6 +44,7 @@ impl Overseerr {
         overseerr
     }
 
+    // make a get request to overseerr
     fn reqwest_get(&self, url: &str) -> Result<String, Box<dyn std::error::Error>> {
         let client = Client::new();
         let response = client.get(url).header("x-api-key", &self.api_key).send()?;
@@ -55,8 +56,18 @@ impl Overseerr {
         response.text().map_err(|err| err.into())
     }
 
-    // create function to get all movies from overseerr
-    pub fn get_all_movies(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+    fn convert_date_to_timestamp(&self, date: &str) -> i32 {
+        let date = date.trim_end_matches("Z");
+        let date = date.replace("T", " ");
+        let date = chrono::NaiveDateTime::parse_from_str(&date, "%Y-%m-%d %H:%M:%S.000").unwrap();
+        let date = date.timestamp() as i32;
+
+        date
+    }
+
+    // get all movies from overseerr
+    pub fn get_all_movies(&self, conn: &Connection) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
+        let mut movies: Vec<Movie> = Vec::new();
 
         let url = format!("{}/api/v1/Media?take=5000", self.url);
         let response = self.reqwest_get(url.as_str())?;
@@ -69,29 +80,87 @@ impl Overseerr {
             }
 
             // convert the date in "createdAt" to a unix timestamp
-            let created_at = media["createdAt"].as_str().unwrap().to_string();
-            let created_at = created_at.trim_end_matches("Z");
-            let created_at = created_at.replace("T", " ");
-            let created_at = chrono::NaiveDateTime::parse_from_str(&created_at, "%Y-%m-%d %H:%M:%S.000").unwrap();
-            let created_at = created_at.timestamp() as i32;
-
-            Movie::new(
-                &conn,
-                media["tmdbId"].as_i64().unwrap() as i32,
-                String::new(),
-                0,
-                String::new(),
-                media["ratingKey"].as_str().unwrap_or("").to_string(),
-                created_at,
-                false
+            let created_at = self.convert_date_to_timestamp(media["createdAt"].as_str().unwrap());
+            
+            movies.push(
+                Movie { 
+                    tmdb_id: media["tmdbId"].as_i64().unwrap() as i32, 
+                    name: String::new(), 
+                    path_hd: String::new(), 
+                    path_4k: String::new(),
+                    rating_key: media["ratingKey"].as_str().unwrap_or("").to_string(),
+                    last_view: created_at, 
+                    protected: false
+                }
             );
+        }
+
+        Ok(movies)
+    }
+
+    
+    pub fn get_all_series(&self, conn: &Connection) -> Result<Vec<Serie>, Box<dyn std::error::Error>> {
+        let mut series: Vec<Serie> = Vec::new();
+
+        let url = format!("{}/api/v1/Media?take=5000", self.url);
+        let response = self.reqwest_get(url.as_str())?;
+        let json: serde_json::Value = serde_json::from_str(&response)?;
+        
+        for media in json["results"].as_array().unwrap() {
+            // if the ratingKey is null, the serie is not in plex, so skip it
+            if (media["ratingKey"].is_null() && media["ratingKey4k"].is_null()) || media["mediaType"].as_str().unwrap() != "tv" {
+                continue;
+            }
+
+            // convert the date in "createdAt" to a unix timestamp
+            let created_at = self.convert_date_to_timestamp(media["createdAt"].as_str().unwrap());
+            
+            series.push(
+                Serie { 
+                    tvdb_id: media["tvdbId"].as_i64().unwrap() as i32, 
+                    name: String::new(), 
+                    path_hd: String::new(), 
+                    path_4k: String::new(),
+                    rating_key: media["ratingKey"].as_str().unwrap_or("").to_string(),
+                    last_view: created_at, 
+                    protected: false
+                }
+            );
+        }
+
+        Ok(series)
+    }
+
+    // get overseer movies and insert missing one into the database
+    pub fn update_db_movies(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+        let db_movies = Movie::get_all(&conn)?;
+        let overseerr_movies = self.get_all_movies(&conn)?;
+
+        for overseerr_movie in overseerr_movies {
+            if !db_movies.contains(&overseerr_movie) {
+                overseerr_movie.save(&conn)?;
+            }
         }
 
         Ok(())
     }
 
-    pub fn get_radarrs(&self) -> Result<Vec<Radarr>, Box<dyn std::error::Error>> {
+    // get overseer series and insert missing one into the database
+    pub fn update_db_series(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+        let db_series = Serie::get_all(&conn)?;
+        let overseerr_series = self.get_all_series(&conn)?;
 
+        for overseerr_serie in overseerr_series {
+            if !db_series.contains(&overseerr_serie) {
+                overseerr_serie.save(&conn)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    // get radarrs configuration from overseerr
+    pub fn get_radarrs(&self) -> Result<Vec<Radarr>, Box<dyn std::error::Error>> {
         let mut radarrs: Vec<Radarr> = Vec::new();
 
         let response = &self.reqwest_get(format!("{}/api/v1/settings/radarr", self.url).as_str())?;
@@ -106,5 +175,24 @@ impl Overseerr {
         }
 
         Ok(radarrs)
+    }
+
+
+    // get sonarrs configuration from overseerr
+    pub fn get_sonarrs(&self) -> Result<Vec<Sonarr>, Box<dyn std::error::Error>> {
+        let mut sonarrs: Vec<Sonarr> = Vec::new();
+
+        let response = &self.reqwest_get(format!("{}/api/v1/settings/sonarr", self.url).as_str())?;
+        let json: serde_json::Value = serde_json::from_str(&response)?;
+
+        for sonarr in json.as_array().unwrap() {
+            sonarrs.push(Sonarr::new(
+                sonarr["externalUrl"].as_str().unwrap(), 
+                sonarr["apiKey"].as_str().unwrap(),
+                sonarr["is4k"].as_bool().unwrap()
+            ));
+        }
+
+        Ok(sonarrs)
     }
 }

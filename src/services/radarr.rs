@@ -16,7 +16,6 @@ pub struct Radarr {
     id: i32,
     url: String,
     api_key: String,
-    paths: Vec<RadarrPath>,
     is4k: bool
 }
 
@@ -30,21 +29,8 @@ impl Radarr {
             id: i32::from(conn.last_insert_rowid() as i32),
             url: url.to_string(),
             api_key: api_key.to_string(),
-            paths: vec![],
             is4k: is4k
         }
-    }
-
-    pub fn set_token(&mut self, api_key: &str) {
-        self.api_key = api_key.to_owned();
-    }
-
-    pub fn get_url(&self) -> &str {
-        return self.url.as_str();
-    }
-
-    pub fn set_url(&mut self, url: &str) {
-        self.url = url.to_owned();
     }
 
     fn reqwest_get(&self, url: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -58,7 +44,7 @@ impl Radarr {
         response.text().map_err(|err| err.into())
     }
 
-    pub fn populate_paths(&mut self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn populate_paths(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         let url = format!("{}{}", self.url, "/api/v3/rootfolder");
         let body = self.reqwest_get(url.as_str())?;
 
@@ -75,8 +61,6 @@ impl Radarr {
             paths.push(RadarrPath::new(&conn, self.id, &root_folder.path, disk.get_id()));
         };
 
-        self.paths = paths;
-
         Ok(())
     }
 
@@ -89,7 +73,6 @@ impl Radarr {
                 id: row.get(0)?,
                 url: row.get(1)?,
                 api_key: row.get(2)?,
-                paths: Vec::new(),
                 is4k: row.get(3)?
             };
             radarr.populate_paths(&conn).unwrap();
@@ -102,7 +85,8 @@ impl Radarr {
         Ok(radarrs)
     }
 
-    pub fn get_all_movies(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn get_all_movies(&self) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
+        let mut movies: Vec<Movie> = Vec::new();
         let url = format!("{}/api/v3/movie", self.url);
         let response = self.reqwest_get(url.as_str())?;
         let json: serde_json::Value = serde_json::from_str(&response)?;
@@ -112,7 +96,45 @@ impl Radarr {
             if movie_json["tmdbId"].is_null() || movie_json["hasFile"].as_bool().unwrap() == false {
                 continue;
             }
-            Movie::from_radarr_json(&conn, self.id, movie_json);
+            movies.push(Movie::from_radarr_json(movie_json, self.is4k));
+        }
+
+        Ok(movies)
+    }
+
+    pub fn update_db_movies(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+        let radarr_movies = self.get_all_movies()?;
+        let mut db_movies = Movie::get_all(&conn)?;
+
+        for radarr_movie in radarr_movies {
+            if let Some(db_movie) = db_movies.iter_mut().find(|db_movie| db_movie.tmdb_id == radarr_movie.tmdb_id) {
+                let mut changed = false;
+
+                // update name if changed
+                if db_movie.name != radarr_movie.name {
+                    db_movie.name = radarr_movie.name.clone();
+                    changed = true;
+                }
+
+                // if is4k = true, update path_4k if changed
+                if self.is4k && db_movie.path_4k != radarr_movie.path_4k {
+                    db_movie.path_4k = radarr_movie.path_4k.clone();
+                    changed = true;
+                }
+
+                // if is4k = false, update path_hd if changed
+                if !self.is4k && db_movie.path_hd != radarr_movie.path_hd {
+                    db_movie.path_hd = radarr_movie.path_hd.clone();
+                    changed = true;
+                }
+
+                // if changed, update db
+                if changed {
+                    db_movie.save(&conn)?;
+                }
+            } else {
+                radarr_movie.save(&conn)?;
+            }
         }
 
         Ok(())
