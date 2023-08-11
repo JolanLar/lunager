@@ -91,6 +91,19 @@ fn main() {
     }
     println!("====================Jellyfin====================");
     println!("");
+    println!("====================Tautulli====================");
+    for tautulli in ::get_all(&conn) {
+        match jellyfin.update_movies_activity(&conn) {
+            Ok(_) => println!("Movies activity updated from jellyfin"),
+            Err(err) => println!("{:?}", err)
+        };
+        match jellyfin.update_series_activity(&conn) {
+            Ok(_) => println!("Series activity updated from jellyfin"),
+            Err(err) => println!("{:?}", err)
+        };
+    }
+    println!("====================Tautulli====================");
+    println!("");
     println!("====================Movies to delete====================");
     // Get three months ago date as a timestamp
     let three_months_ago = (chrono::Utc::now().timestamp() - 60 * 60 * 24 * 30 * 3) as i32;

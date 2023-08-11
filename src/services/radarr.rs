@@ -20,7 +20,7 @@ pub struct Radarr {
 }
 
 impl Radarr {
-    pub fn new(url: &str, api_key: &str, is4k: bool) -> Self {
+    pub fn new(conn: &Connection, url: &str, api_key: &str, is4k: bool) -> Self {
         let conn = Connection::open("data.db").unwrap();
 
         conn.execute("REPLACE INTO radarr (url, api_key, is4k) VALUES (?, ?, ?)", params![url, api_key, is4k]).unwrap();

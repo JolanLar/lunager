@@ -11,7 +11,7 @@ pub fn initialize_database() -> Result<()> {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
                 url TEXT,
-                api_key TEXT
+                api_key TEXTf
             )", service),
             []
         )?;
@@ -103,6 +103,15 @@ pub fn initialize_database() -> Result<()> {
     // Create jellyfin table
     conn.execute("
         CREATE TABLE IF NOT EXISTS jellyfin (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT,
+            api_key TEXT
+        )", 
+        []
+    )?;
+
+    conn.execute("
+        CREATE TABLE IF NOT EXISTS tautulli (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT,
             api_key TEXT
