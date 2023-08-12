@@ -6,6 +6,7 @@ use services::overseerr::Overseerr;
 
 use crate::services::movie::Movie;
 use crate::services::serie::Serie;
+use crate::services::tautulli::Tautulli;
 
 mod services;
 
@@ -21,17 +22,17 @@ fn main() {
     println!("====================Overseerr====================");
     let overseerr = Overseerr::get_first(&conn);
     match overseerr.update_db_movies(&conn) {
-        Ok(_) => println!("Movies updated from overseerr"),
+        Ok(_) => (),
         Err(err) => println!("{:?}", err)
     };
     match overseerr.update_db_series(&conn) {
-        Ok(_) => println!("Series updated from overseerr"),
+        Ok(_) => (),
         Err(err) => println!("{:?}", err)
     };
     println!("====================Overseerr====================");
     println!("");
     println!("====================Radarr====================");
-    let radarrs = match overseerr.get_radarrs() {
+    let radarrs = match overseerr.get_radarrs(&conn) {
         Ok(radarrs) => {
             println!("Successfully got radarrs from overseerr");
             radarrs
@@ -48,7 +49,7 @@ fn main() {
             Err(err) => println!("{:?}", err)
         }
         match radarr.update_db_movies(&conn) {
-            Ok(_) => println!("Movies updated from radarr"),
+            Ok(_) => (),
             Err(err) => println!("{:?}", err)
         };
     }
@@ -72,7 +73,7 @@ fn main() {
             Err(err) => println!("{:?}", err)
         }
         match sonarr.update_db_series(&conn) {
-            Ok(_) => println!("Series updated from sonarr"),
+            Ok(_) => (),
             Err(err) => println!("{:?}", err)
         };
     }
@@ -81,24 +82,30 @@ fn main() {
     println!("====================Jellyfin====================");
     for jellyfin in Jellyfin::get_all(&conn) {
         match jellyfin.update_movies_activity(&conn) {
-            Ok(_) => println!("Movies activity updated from jellyfin"),
+            Ok(_) => (),
             Err(err) => println!("{:?}", err)
         };
         match jellyfin.update_series_activity(&conn) {
-            Ok(_) => println!("Series activity updated from jellyfin"),
+            Ok(_) => (),
             Err(err) => println!("{:?}", err)
         };
     }
     println!("====================Jellyfin====================");
     println!("");
     println!("====================Tautulli====================");
-    for tautulli in ::get_all(&conn) {
-        match jellyfin.update_movies_activity(&conn) {
-            Ok(_) => println!("Movies activity updated from jellyfin"),
-            Err(err) => println!("{:?}", err)
-        };
-        match jellyfin.update_series_activity(&conn) {
-            Ok(_) => println!("Series activity updated from jellyfin"),
+    let tautullis = match Tautulli::get_all(&conn) {
+        Ok(tautullis) => {
+            println!("Successfully got tautullis from overseerr");
+            tautullis
+        },
+        Err(err) => {
+            println!("{:?}", err);
+            Vec::new()
+        }
+    };
+    for mut tautulli in tautullis {
+        match tautulli.update_medias_activity(&conn) {
+            Ok(_) => (),
             Err(err) => println!("{:?}", err)
         };
     }

@@ -80,6 +80,9 @@ impl Jellyfin {
     pub fn update_movies_activity(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         let query = "SELECT IFNULL(NULLIF(SUBSTR(ItemName, 0, INSTR(ItemName, ' - ')), ''), ItemName) ItemName, strftime('%s', strftime('%s', max(DateCreated)), 'unixepoch') lastView FROM PlaybackActivity WHERE SUBSTR(ItemName, 0, INSTR(ItemName, ' - ')) == '' GROUP BY IFNULL(NULLIF(SUBSTR(ItemName, 0, INSTR(ItemName, ' - ')), ''), ItemName)";
         let results = self.update_media_activity(query)?;
+
+        let mut quantity_updated = 0;
+
         for result in results {
             if result[1].is_null() {
                 continue;
@@ -88,50 +91,50 @@ impl Jellyfin {
 
             let mut movie = match Movie::get_by_title(&conn, title) {
                 Ok(movie) => movie,
-                Err(err) => {
-                    println!("Error: {}", err);
-                    continue;
-                }
+                Err(_) => continue
             };
 
             // Set last view timestamp
             let last_played = self.clean_api_timestamp(&result[1]);
-            if movie.last_view > last_played {
-                continue;
+            if movie.last_view < last_played {
+                movie.last_view = last_played;
+                movie.save(&conn)?;
+                quantity_updated += 1;
             }
-            movie.last_view = last_played;
-
-            movie.save(&conn)?;
         };
+
+        println!("Updated movies : {}", quantity_updated);
         Ok(())
     }
 
     pub fn update_series_activity(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         let query = "SELECT IFNULL(NULLIF(SUBSTR(ItemName, 0, INSTR(ItemName, ' - ')), ''), ItemName) ItemName, strftime('%s', strftime('%s', max(DateCreated)), 'unixepoch') lastView FROM PlaybackActivity WHERE SUBSTR(ItemName, 0, INSTR(ItemName, ' - ')) != '' GROUP BY IFNULL(NULLIF(SUBSTR(ItemName, 0, INSTR(ItemName, ' - ')), ''), ItemName)";
         let results = self.update_media_activity(query)?;
+
+        let mut quantity_updated = 0;
+
         for result in results {
             if result[1].is_null() {
                 continue;
             }
-            let title = result[0].as_str().unwrap();
 
+            // get database serie based on the title
+            let title = result[0].as_str().unwrap();
             let mut serie = match Serie::get_by_title(&conn, title) {
                 Ok(serie) => serie,
-                Err(err) => {
-                    println!("Error: {}", err);
-                    continue;
-                }
+                Err(_) => continue
             };
 
             // Set last view timestamp
             let last_played = self.clean_api_timestamp(&result[1]);
             if serie.last_view > last_played {
-                continue;
+                serie.last_view = last_played;
+                serie.save(&conn)?;
+                quantity_updated += 1;
             }
-            serie.last_view = last_played;
-
-            serie.save(&conn)?;
         };
+
+        println!("Updated series : {}", quantity_updated);
         Ok(())
     }
 

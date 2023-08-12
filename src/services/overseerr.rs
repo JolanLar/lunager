@@ -66,7 +66,7 @@ impl Overseerr {
     }
 
     // get all movies from overseerr
-    pub fn get_all_movies(&self, conn: &Connection) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
+    pub fn get_all_movies(&self) -> Result<Vec<Movie>, Box<dyn std::error::Error>> {
         let mut movies: Vec<Movie> = Vec::new();
 
         let url = format!("{}/api/v1/Media?take=5000", self.url);
@@ -99,7 +99,7 @@ impl Overseerr {
     }
 
     
-    pub fn get_all_series(&self, conn: &Connection) -> Result<Vec<Serie>, Box<dyn std::error::Error>> {
+    pub fn get_all_series(&self) -> Result<Vec<Serie>, Box<dyn std::error::Error>> {
         let mut series: Vec<Serie> = Vec::new();
 
         let url = format!("{}/api/v1/Media?take=5000", self.url);
@@ -134,33 +134,41 @@ impl Overseerr {
     // get overseer movies and insert missing one into the database
     pub fn update_db_movies(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         let db_movies = Movie::get_all(&conn)?;
-        let overseerr_movies = self.get_all_movies(&conn)?;
+        let overseerr_movies = self.get_all_movies()?;
+
+        let mut quantity_added = 0;
 
         for overseerr_movie in overseerr_movies {
             if !db_movies.contains(&overseerr_movie) {
                 overseerr_movie.save(&conn)?;
+                quantity_added += 1;
             }
         }
 
+        println!("Added movies : {}", quantity_added);
         Ok(())
     }
 
     // get overseer series and insert missing one into the database
     pub fn update_db_series(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         let db_series = Serie::get_all(&conn)?;
-        let overseerr_series = self.get_all_series(&conn)?;
+        let overseerr_series = self.get_all_series()?;
+
+        let mut quantity_added = 0;
 
         for overseerr_serie in overseerr_series {
             if !db_series.contains(&overseerr_serie) {
                 overseerr_serie.save(&conn)?;
+                quantity_added += 1;
             }
         }
 
+        println!("Added series : {}", quantity_added);
         Ok(())
     }
 
     // get radarrs configuration from overseerr
-    pub fn get_radarrs(&self) -> Result<Vec<Radarr>, Box<dyn std::error::Error>> {
+    pub fn get_radarrs(&self, conn: &Connection) -> Result<Vec<Radarr>, Box<dyn std::error::Error>> {
         let mut radarrs: Vec<Radarr> = Vec::new();
 
         let response = &self.reqwest_get(format!("{}/api/v1/settings/radarr", self.url).as_str())?;
@@ -168,6 +176,7 @@ impl Overseerr {
 
         for radarr in json.as_array().unwrap() {
             radarrs.push(Radarr::new(
+                conn,
                 radarr["externalUrl"].as_str().unwrap(), 
                 radarr["apiKey"].as_str().unwrap(),
                 radarr["is4k"].as_bool().unwrap()

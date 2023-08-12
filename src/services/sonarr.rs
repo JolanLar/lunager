@@ -106,6 +106,9 @@ impl Sonarr {
         let sonarr_series = self.get_all_series()?;
         let mut db_series = Serie::get_all(&conn)?;
 
+        let mut quantity_created = 0;
+        let mut quantity_updated = 0;
+
         for sonarr_serie in sonarr_series {
             if let Some(db_serie) = db_series.iter_mut().find(|db_serie| db_serie.tvdb_id == sonarr_serie.tvdb_id) {
                 let mut changed = false;
@@ -131,12 +134,16 @@ impl Sonarr {
                 // if changed, update db
                 if changed {
                     db_serie.save(&conn)?;
+                    quantity_updated += 1;
                 }
             } else {
                 sonarr_serie.save(&conn)?;
+                quantity_created += 1;
             }
         }
 
+        println!("Created series : {}", quantity_created);
+        println!("Updated series : {}", quantity_updated);
         Ok(())
     }
 }

@@ -21,8 +21,6 @@ pub struct Radarr {
 
 impl Radarr {
     pub fn new(conn: &Connection, url: &str, api_key: &str, is4k: bool) -> Self {
-        let conn = Connection::open("data.db").unwrap();
-
         conn.execute("REPLACE INTO radarr (url, api_key, is4k) VALUES (?, ?, ?)", params![url, api_key, is4k]).unwrap();
 
         Radarr {
@@ -106,37 +104,44 @@ impl Radarr {
         let radarr_movies = self.get_all_movies()?;
         let mut db_movies = Movie::get_all(&conn)?;
 
+        let mut quantity_created = 0;
+        let mut quantity_updated = 0;
+
         for radarr_movie in radarr_movies {
             if let Some(db_movie) = db_movies.iter_mut().find(|db_movie| db_movie.tmdb_id == radarr_movie.tmdb_id) {
                 let mut changed = false;
 
                 // update name if changed
                 if db_movie.name != radarr_movie.name {
-                    db_movie.name = radarr_movie.name.clone();
+                    db_movie.name = radarr_movie.name;
                     changed = true;
                 }
 
                 // if is4k = true, update path_4k if changed
                 if self.is4k && db_movie.path_4k != radarr_movie.path_4k {
-                    db_movie.path_4k = radarr_movie.path_4k.clone();
+                    db_movie.path_4k = radarr_movie.path_4k;
                     changed = true;
                 }
 
                 // if is4k = false, update path_hd if changed
                 if !self.is4k && db_movie.path_hd != radarr_movie.path_hd {
-                    db_movie.path_hd = radarr_movie.path_hd.clone();
+                    db_movie.path_hd = radarr_movie.path_hd;
                     changed = true;
                 }
 
                 // if changed, update db
                 if changed {
                     db_movie.save(&conn)?;
+                    quantity_updated += 1;
                 }
             } else {
                 radarr_movie.save(&conn)?;
+                quantity_created += 1;
             }
         }
 
+        println!("Created movies : {}", quantity_created);
+        println!("Updated movies : {}", quantity_updated);
         Ok(())
     }
 }

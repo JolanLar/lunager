@@ -129,6 +129,33 @@ impl Movie {
 
         Ok(movies)
     }
+
+    pub fn get_by_rating_key(conn: &Connection, rating_key: &str) -> Result<Movie, Box<dyn std::error::Error>> {
+        let mut stmt = conn.prepare("
+            SELECT tmdb_id, name, path_hd, path_4k, rating_key, last_view, protected
+            FROM movie
+            WHERE rating_key = ?
+        ")?;
+
+        let mut movie_iter = stmt.query_map([rating_key], |row| {
+            let movie = Movie {
+                tmdb_id: row.get(0)?,
+                name: row.get(1)?,
+                path_hd: row.get(2)?,
+                path_4k: row.get(3)?,
+                rating_key: row.get(4)?,
+                last_view: row.get(5)?,
+                protected: row.get(6)?
+            };
+            Ok(movie)
+        })?;
+
+        if let Some(result) = movie_iter.next() {
+            result.map_err(|err| err.into())
+        } else {
+            Err(format!("Movie not found for the rating key : {}", rating_key).into())
+        }
+    }
 }
 
 // add partial_eq trait to Movie struct
